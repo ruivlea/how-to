@@ -1,0 +1,56 @@
+https://access.redhat.com/articles/1196333
+
+How to Shrink an ext2/3/4 File system with resize2fs - Red Hat Customer Portal
+2-3 minutes
+
+Prerequisits
+
+    A created partition that you know the name of. To check the name, run cat /etc/fstab. The first field is the name of the partition.
+
+Procedure
+
+1. If the partition the file system is on is currently mounted, unmount it.
+
+For example
+
+2. Run fsck on the unmounted file system.
+
+For example
+
+~]# e2fsck /dev/vdb1
+e2fsck 1.41.12 (17-May-2010)
+Pass 1:Checking inodes, blocks, and sizes
+Pass 2:Checking directory structure
+Pass 3:Checking directory connectivity
+Pass 4:Checking reference counts
+Pass 5:Checking group sumary information
+ext4-1:11/131072 files (0.0% non-contiguous),27050/524128 blocks
+
+3. Shrink the file system with the resize2fs /dev/device size command.
+
+For example
+
+~]# resize2fs /dev/vdb1 200M
+resize2fs 1.41.12 (17-May-2010)
+Resizing the filesystem on /dev/vdb1 to 204800 (1k) blocks.
+The filesystem /dev/vdb1 is now 204800 blocks long.
+
+Accepted size units for file system block sizes are:
+
+S - 512 byte sectors
+
+K - kilobytes
+
+M - megabytes
+
+G - gigabytes
+
+4. Delete and recreate the partition the file system is on to the required amount. If the file system is smaller than 2TB use fdisk as is described in How to Resize a File System with fdisk, if the file system is larger than 2TB use parted as described in [LINK TO COME].
+
+5. Mount the file system and partition.
+
+For example
+
+~]# mount /dev/vdb1 /ext4-1
+
+

@@ -1,0 +1,75 @@
+
+From Wiki
+Main: Switching init
+
+Note: Switching init is for advanced users who know what they are doing. In general, doing a fresh installation is the preferred way to install Artix. Ensure you have a bootable LiveISO, for example on a flash drive, ready in case if anything goes wrong and you can't boot your system.
+
+For migration from systemd to one of init systems supported by Artix, see instead the article Migration.
+Summary
+
+Essentially, what needs to be done to switch init is to uninstall all packages containing init, with init replaced by your current init suffix (in other words: openrc, runit, s6, suite66 or dinit), and install corresponding packages containing newinit instead, where newinit is the init you want to switch to, followed by activating all the newly installed services and rebooting your system.
+Exit X
+
+Since uninstalling init and related packages will crash a running X session and might render your computer effectively unusable, the first step is to stop your DM (if you are using one) and get to a text console (not the same as a terminal emulator!).
+
+From this point on, this guide will assume switching from OpenRC to 66, using XFCE DE with lightdm as DM; it can easily be modified to accomodate other combinations of inits/DEs/DMs. Having this setup, stopping X to get to a text console is accomplished with:
+
+   sudo rc-service lightdm stop
+
+(Refer to the documentation of your init for information related to other inits.) Your X session will end and you will see a login screen from a getty. If you see a blank screen instead, press Alt-F2 to go to tty2. Login as root with your root password.
+Backup a list of your active services
+
+Save a list of your active services to a file. This is done with the following command:
+
+   pacman -Qsq openrc > services.list
+
+Download packages for the new init
+
+You should fetch the packages for the new init before removing the packages for the old init. This is not mandatory, but if you lose internet connection in the middle of the update, you might be left with a non-functional system. This is done by using the command:
+
+  pacman -Sw $(sed 's/openrc/suite66/g' < services.list)
+
+Check if there were any errors, and install the appropriate packages manually or modify the output. For example, there is no suite66-settingsd package, so you would use:
+
+  pacman -Sw $(sed -e 's/openrc/suite66/g' -e 's/suite66-settingsd//' < services.list)
+
+Remove the old init
+
+  pacman -Rdd $(cat services.list)
+
+Note: In s6, this command currently hangs. If you are switching init from s6, issue the commands from the chroot environment in LiveISO instead.
+Install the new init
+
+Finally, you can install the packages previously downloaded with pacman -Sw:
+
+  pacman -S $(sed 's/openrc/suite66/g' < services.list)
+
+Activate the new services
+
+For suite66, you can start with the procedure described in the section Quick start (troubleshooting):
+
+  export EDITOR=/bin/vi
+  66-env -t boot boot@system
+  66-enable -t boot -F boot@system
+  66-tree -ncE default                 # Note: if this prints an error, just ignore it.
+
+then find out the names of the corresponding services in suite66 and activate them. Service names differ across inits, so for example, to find out the exact name of the service from the package alsa-utils-suite66, you can use the command
+
+  pacman -Ql alsa-utils-suite66
+
+to list the files installed by the package. The service file will be under /etc/66/service, in this case alsa. For example:
+
+  66-enable -t default acpid alsa avahi-daemon bluetoothd connmand cronie cupsd \
+    dbus dmeventd dhcpcd logind haveged lightdm mdadm statd ntpd sshd rpcbind \
+    rsyncd syslog-ng wpa_supplicant             # add your desired services here
+
+Important: If there are any errors, correct them before proceeding to the next step! Otherwise, your system might not boot.
+Reboot
+
+You won't be able to reboot normally, as the symlinks to do that point to the newly installed init. Do a cold reboot instead (using the reset button on your computer or turning the power off, then on). Another method to cold reboot is using SysRq's b option. sysrq does not unmount disks, so be careful with this approach. for more information, consult MagicSysRq's Documentation.
+
+echo b > /proc/sysrq-trigger will trigger a cold reboot, and restart the host.
+
+In case of any problems, you can use your LiveISO to boot and repair your system.
+Retrieved from https://wiki.artixlinux.org/Main/SwitchInit
+Page last modified on April 02, 2022, at 04:52 PM
