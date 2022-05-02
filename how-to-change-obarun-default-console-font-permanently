@@ -1,0 +1,12 @@
+according to:
+https://www.reddit.com/r/initFreedom/comments/jml34e/how_you_configure_66obaruns_boot_module/
+
+sudo -E 66-env boot@yourmodulename
+
+ex to change it system wide:
+
+sudo -E 66-env boot@system
+
+then change FONT=
+
+
