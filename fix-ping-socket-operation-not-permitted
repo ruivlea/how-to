@@ -1,2 +1,4 @@
+as of: https://www.mail-archive.com/arch-general@archlinux.org/msg28068.html
+
 do as root:
 setcap cap_net_raw=ep /usr/bin/ping
