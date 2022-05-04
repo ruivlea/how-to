@@ -1,0 +1,9 @@
+from: https://www.linuxfromscratch.org/lfs/view/stable/chapter07/cleanup.html
+
+Backup:
+cd $LFS
+tar -cJpf $HOME/lfs-temp-tools-11.1.tar.xz .
+
+Restore:
+cd $LFS
+tar -xpf $HOME/lfs-temp-tools-11.1.tar.xz
