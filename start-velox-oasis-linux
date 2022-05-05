@@ -1,0 +1,15 @@
+from: https://dwm.suckless.narkive.com/S0qa7wpB/dev-oasis-small-linux-system-inspired-by-stali
+
+if doesn't have .velox.conf, copy it:
+cp /share/doc/velox/velox.conf.sample ~/.velox.conf
+
+to lauch it:
+swc-launch velox
+
+default keybind:
+mod = logo button / windows button
+
+terminal: mod + shift + enter
+dmenu: mod + r
+quit velox: mod + shift + q
+close window: mod + shift + c
