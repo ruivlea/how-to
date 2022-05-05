@@ -1,7 +1,7 @@
 from: https://dwm.suckless.narkive.com/S0qa7wpB/dev-oasis-small-linux-system-inspired-by-stali
 
-shutdown:
+reboot:
 kill -s INT 1
 
-reboot:
-kill -s USR1
+shutdown:
+kill -s USR1 1
