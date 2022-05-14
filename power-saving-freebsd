@@ -1,0 +1,56 @@
+https://www.c0ffee.net/blog/freebsd-on-a-laptop/#powersaving
+
+Power Saving
+
+From this point on I'm going to assume you successfully installed and booted FreeBSD. Log in as root as we can start configuring stuff!
+
+The first order of business is to get some decent battery life. You can see the current battery status using:
+
+acpiconf -i 0
+
+Enabling CPU frequency scaling will give you the biggest power savings. Add the following to /etc/rc.conf:
+
+/etc/rc.conf
+powerd_enable="YES"
+powerd_flags="-a hiadaptive -b adaptive"
+performance_cx_lowest="Cmax"
+economy_cx_lowest="Cmax"
+
+Depending on your wireless card, you might be able to enable WiFi power saving in this file as well. Try the following:
+
+/etc/rc.conf
+ifconfig_wlan0="WPA DHCP powersave"
+
+There are plenty of power saving kernel tuneables, especially if you have an Intel card:
+
+/boot/loader.conf
+hw.pci.do_power_nodriver="3"
+hw.snd.latency="7"
+hint.p4tcc.0.disabled="1"
+hint.acpi_throttle.0.disabled="1"
+hint.ahcich.0.pm_level="5"
+hint.ahcich.1.pm_level="5"
+hint.ahcich.2.pm_level="5"
+hint.ahcich.3.pm_level="5"
+hint.ahcich.4.pm_level="5"
+hint.ahcich.5.pm_level="5"
+
+# for intel cards only
+drm.i915.enable_rc6="7"
+drm.i915.semaphores="1"
+drm.i915.intel_iommu_enabled="1"
+
+Finally, you can set power savings on your USB devices. However, not all of them will support power saving mode. The following shell one-liner will generate a list of commands to enable power saving on all your supported USB devices.
+
+for ugen in $(usbconfig | awk -F: '{print $1}' | sort) ; do cmd="/usr/sbin/usbconfig -d $ugen power_save"; $($cmd 2> /dev/null) && echo $cmd ; done
+
+You can put these commands in /etc/rc.local so they'll run on every boot. Here's what it looks like on my ThinkPad:
+
+/etc/rc.local
+/usr/sbin/usbconfig -d ugen1.2 power_save
+/usr/sbin/usbconfig -d ugen1.3 power_save
+/usr/sbin/usbconfig -d ugen1.4 power_save
+/usr/sbin/usbconfig -d ugen1.5 power_save
+/usr/sbin/usbconfig -d ugen2.2 power_save
+
+After all that configuration, I get about 8-9 hours of battery life on my ThinkPad, depending on the backlight's brightness. 
