@@ -1,0 +1,942 @@
+https://www.c0ffee.net/blog/openbsd-on-a-laptop/
+
+OpenBSD on a Laptop
+
+A guide to a secure and streamlined installation of OpenBSD 6.4 on a laptop.
+
+It's been almost a year since I've posted any articles, and I'm afraid I have a confession to make...I've joined the dark side! Most people know my site from the How to Run a Mail Server post, which targeted FreeBSD. A few months ago, I converted all that infrastructure to an automated OpenBSD platform. Turns out OpenBSD was so much easier, I decided to run it as a desktop too.
+
+You won't find nearly as many online resources about setting up OpenBSD, because honestly, you really don't need any. Unlike much of Linux and FreeBSD, the included manuals are high quality, coherent, and filled with practical examples. You also need very little third party software to do basic tasks—almost everything you need is well-integrated into the base system.
+
+You'll notice that many features that require toil to achieve on FreeBSD, such as suspend on lid close, working volume buttons, and decent battery life, work out of the box on OpenBSD. You can tell the developers actually use this thing on their personal devices.
+
+And while the official OpenBSD FAQ has all you need to get an installation up and running, it takes a bit of grinding to massage the base installation into a seamless laptop experience. So, I wrote this guide to give you a jump start. Things should just work as long as you have a non-bleeding-edge, semi-mainstream laptop, but ThinkPads are your best bet. Enjoy!
+
+    Installation
+    Network Setup
+    Initial Configuration
+    X11
+    The CWM Window Manager
+    Customizing the Base Utilities
+    Sending Mail
+    Installing Packages
+    Chromium on OpenBSD
+    Multimedia and Battery
+    Updating the Base System
+    Other Resources 
+
+Installation
+
+OpenBSD has one of the most user-friendly installers in the Unix ecosystem. Grab a USB stick and download the amd64 disk image:
+
+curl -OJ https://cdn.openbsd.org/pub/OpenBSD/6.4/amd64/install64.fs
+
+Plug in the USB stick and copy the disk image using dd. This command assumes the disk is recognized as sdb (check dmesg to verify):
+
+dd if=install64.fs of=/dev/sdb bs=1m
+
+Boot your laptop to the USB installer. This guide assumes you're booting via UEFI—if your laptop has any "BIOS compatibility mode" options, you should disable them. OpenBSD boots happily in pure UEFI mode.
+
+Once you reach the installation prompt, choose (S)hell. We'll need some manual steps to enable full-disk encryption.
+Full Disk Encryption with SoftRAID
+
+If you're even a little paranoid, you should start by overwriting the disk with random data. We'll assume your hard disk is sd0—you can use dmesg to check. The c suffix is OpenBSD's way of specifying the entire disk.
+
+dd if=/dev/urandom of=/dev/rsd0c bs=1m
+
+This will take a long time. You can check the status by hitting Ctrl-T. Once that's done, create a new partition table using fdisk. This command will automatically create the EFI System Partition.
+
+fdisk -iy -g -b 960 sd0
+
+OpenBSD uses softraid for full-disk encryption. We'll make one partition for the whole disk. Use the values in boldface for the disklabel prompts.
+
+disklabel -E sd0
+Label editor (enter '?' for help at any prompt)
+> a a
+offset: [1024]
+size: [500117105]
+FS type: [4.2BSD] RAID
+> w
+> q
+No label changes.
+
+Now, create the encrypted softraid. You will prompted for a passphrase. Choose a strong one, but remember that if you forget it, you're SOL.
+
+bioctl -c C -l sd0a softraid0
+
+You should see a message like CRYPTO volume attached as sd2. This is the name of your new "virtual" disk. You'll need to make a device node and clear out the first megabyte. We want a nice, clean region for the disklabel.
+
+cd /dev && sh MAKEDEV sd2
+dd if=/dev/zero of=/dev/rsd2c bs=1m count=1
+
+Now type exit to return to the installation menu, and choose (I)nstall.
+The OpenBSD Installer
+
+The installer will ask you a series of questions to set up your system. You'll be prompted for your keyboard layout, hostname, root password, etc.
+
+You can also connect to your network during the installation, but your wireless card might not be functional. Most wireless cards require non-free firmware that OpenBSD doesn't include in the base install. For now, you can just skip the network setup. We'll come back to it once the installation is finished.
+
+If you're installing on a laptop, you probably want to enable xenodm for X11 and disable sshd from starting on boot. You can also go ahead and create your user account when prompted.
+
+The installer will ask you to specify a root disk. Make sure to choose the softraid disk you created earlier (most likely sd2):
+
+Which disk is the root disk ('?' for details) [sd0] sd2
+
+Go ahead and select the whole disk (G)PT option to let OpenBSD utilize the entire encrypted softraid.
+
+You'll be prompted to choose a partition layout. If you have a sufficiently large hard disk (greater than 128 GB or so), the auto layout is probably your best bet. You can customize it if you so choose—for example, if you intend to compile a lot of ports, you'd probably want larger /usr/src and /usr/obj partitions.
+
+After partitioning the disk, you'll be prompted to specify the location of the "sets", which contain various components of the OpenBSD base system. Since we used a USB stick, we'll select disk. Your USB stick is most likely sd1.
+
+Location of sets? (cd0 disk http or 'done') [cd0] disk
+Is the disk partition already mounted? [no] no
+Which disk contains the install media? (or 'done') [sd0] sd1
+Available sd1 partitions are: a i.
+Which sd1 partition has the install sets? (or 'done') [a]
+Pathname to the sets? (or 'done') [6.4/amd64]
+
+You can then specify which sets you'd like installed. I recommend accepting the defaults, and installing all of them. If you're installing from a disk, it's safe to continue without SHA256 verification, provided you verified the installation image as decribed here.
+
+Directory does not contain SHA256.sig. Continue without verification? [no] yes
+
+Once the sets are installed, you'll be prompted for your timezone. After that, you're good to go! Just reboot to boot into your new OpenBSD installation.
+Network Setup
+
+Once you've logged in at the xenodm prompt, you'll be greeted by the default desktop environment, fvwm. (It's charming to say the least. Don't worry, we'll change it later.) Go ahead and run su in the xterm window to get a root shell. Use the root password you created in the installer.
+
+First, you need to figure out the name of your ethernet interface. Run ifconfig to print the attached network interfaces.
+
+ifconfig
+
+If you have an Intel ethernet card, the device will probably be called em0. Otherwise, just go with whichever device shows "Ethernet" for the media field. Plug in an ethernet cable and run dhclient to get an IP address.
+
+dhclient em0
+
+Now you should be connected to the internet. Use the fw_update tool to download firmware for your wireless card. When run with no arguments, it will scan your hardware and install any necessary firmware packages from OpenBSD's firmware repository.
+
+fw_update
+
+Note: If your laptop doesn't have an ethernet card, you'll have to download the firmware packages for your hardware on another device and copy them to your OpenBSD installation by some other means (like a FAT32-formatted USB stick). Check the fw_update man page for details on local installation.
+
+Now you're ready to connect to WiFi. Run ifconfig again, and you should see a new wireless network interface. If you have an Intel wireless card, it will probably be called iwn0. Bring it up and scan for networks:
+
+ifconfig iwn0 up
+ifconfig iwn0 scan
+
+One of my favorite things about OpenBSD is how well integrated the base system is. For example, to connect to a WPA2-protected network, you can do everything with a simple ifconfig command:
+
+ifconfig iwn0 nwid YOUR_SSID wpakey "YOUR_PASSPHRASE"
+dhclient iwn0
+
+Linux would require some kind of wpa_supplicant nightmare. Anyway, you'll probably want to make this configuration persistent. In OpenBSD, this is done in a hostname.if file. Lucky for you, OpenBSD recently added the ability to configure multiple WiFi profiles! Previously you had to write your own hacky script to manage different networks.
+
+Assuming your wireless card is iwn0, create /etc/hostname.iwn0 with the following:
+
+/etc/hostname.iwn0
+join "YOUR_SSID" wpakey "YOUR_PASSPHRASE"
+# you can specify other networks here too, in order of priority:
+# join "WORK_SSID" wpakey "WORK_PASSPHRASE"
+# join "OPEN_COFFEE_SHOP"
+dhcp
+inet6 autoconf
+up powersave
+
+To test your changes, undo the manual configuration we performed and run the netstart script:
+
+ifconfig em0 down
+ifconfig iwn0 down
+pkill dhclient
+sh /etc/netstart
+
+This should automatically tighten up permissions on the hostname.if file and join your network. Now that you're online (and can easily copy-paste from this guide) we can start tweaking some configs!
+Initial Configuration
+
+The first thing to do is disable the annoying xconsole window from autostarting at each login. We'll also disable the system beep in the session manager.
+
+sed -i 's/xconsole/#xconsole/' /etc/X11/xenodm/Xsetup_0
+echo 'xset b off' >> /etc/X11/xenodm/Xsetup_0
+
+You can also disable the beep when logged into a virtual console, as well as remap Caps Lock to the Control key, by editing /etc/wsconsctl.conf
+
+/etc/wsconsctl.conf
+keyboard.bell.volume=0
+keyboard.map+="keysym Caps_Lock = Control_L"
+
+Configure doas so you can run commands with elevated privileges from your normal user account. This is OpenBSD's reimagination of sudo.
+
+echo 'permit persist keepenv YOUR_USERNAME' > /etc/doas.conf
+
+This line permits your user to run doas for all commands, maintains your environment variables, and gives you a grace period between commands where you don't have to enter your password over and over again. This is what most users would expect from an interactive session.
+
+Since this is a laptop, you'll want to enable power management to save battery life:
+
+rcctl enable apmd
+rcctl set apmd flags -A
+rcctl start apmd
+
+Add your user to the staff group. This group has higher resource limits in login.conf. You'll need to log out and back in for this change to take effect.
+
+usermod -G staff YOUR_USERNAME
+
+The default resource limits in OpenBSD are extremely conservative. For running modern applications like web browsers, we'll need to bump them up significantly. Use vi to modify the staff login class in /etc/login.conf as follows.
+
+/etc/login.conf
+staff:\
+  :datasize-cur=1024M:\
+  :datasize-max=8192M:\
+  :maxproc-cur=512:\
+  :maxproc-max=1024:\
+  :openfiles-cur=4096:\
+  :openfiles-max=8192:\
+  :stacksize-cur=32M:\
+  :ignorenologin:\
+  :requirehome@:\
+  :tc=default:
+
+You'll need to logout and log back in for those changes to take effect. There are also some kernel sysctls we'll need to bump up for desktop use. Add the following values to /etc/sysctl.conf. The shm variables are for my laptop, which has 16 GB of RAM. You should scale them accordingly for your machine.
+
+/etc/sysctl.conf
+# shared memory limits (chrome needs a ton)
+kern.shminfo.shmall=3145728
+kern.shminfo.shmmax=2147483647
+kern.shminfo.shmmni=1024
+
+# semaphores
+kern.shminfo.shmseg=1024
+kern.seminfo.semmns=4096
+kern.seminfo.semmni=1024
+
+kern.maxproc=32768
+kern.maxfiles=65535
+kern.bufcachepercent=90
+kern.maxvnodes=262144
+kern.somaxconn=2048
+
+You can greatly improve disk performance by enabling softupdates and the noatime option for all your local partitions in /etc/fstab. Add the softdep,noatime options to each partition (except swap) as I've demonstrated below. Don't copy and paste this directly, as your disk identifier will be different.
+
+/etc/fstab
+0364c44477d30004.b none swap sw
+0364c44477d30004.a / ffs rw,softdep,noatime 1 1
+0364c44477d30004.l /home ffs rw,softdep,noatime,nodev,nosuid 1 2
+0364c44477d30004.d /tmp ffs rw,softdep,noatime,nodev,nosuid 1 2
+0364c44477d30004.f /usr ffs rw,softdep,noatime,nodev 1 2
+0364c44477d30004.g /usr/X11R6 ffs rw,softdep,noatime,nodev 1 2
+0364c44477d30004.h /usr/local ffs rw,softdep,noatime,wxallowed,nodev 1 2
+0364c44477d30004.k /usr/obj ffs rw,softdep,noatime,nodev,nosuid 1 2
+0364c44477d30004.j /usr/src ffs rw,softdep,noatime,nodev,nosuid 1 2
+0364c44477d30004.e /var ffs rw,softdep,noatime,nodev,nosuid 1 2
+
+Since this is a laptop, you'll probably want your screen to lock automatically when you close the lid. You can configure apmd to do this for you. (Note that this won't be effective until we configure X11 in the section below.)
+
+First, make the directory:
+
+mkdir /etc/apm
+
+Then, create the file /etc/apm/suspend with the following contents:
+
+/etc/apm/suspend
+#!/bin/sh
+pkill -USR1 xidle
+
+And make it executable:
+
+chmod +x /etc/apm/suspend
+
+I'm paranoid and don't like the fact that ntpd reaches out to www.google.com of all places to sanity check each clock update. You can turn that off easily:
+
+sed -i '/google/d' /etc/ntpd.conf
+
+Or, even better, you can replace Google with domain you feel comfortable pinging all the time.
+
+sed -i 's/www\.google\.com/www.example.com/' /etc/ntpd.conf
+
+If you do either of those, be sure to restart ntpd:
+
+rcctl restart ntpd
+
+Now you've got a pretty robust OpenBSD installation. You could probably take over the world with just the base system, but we'll take some time to make OpenBSD into a more pleasant desktop experience. Exit from your root shell, and we'll start configuring X11.
+Setting Up X11
+
+The default OpenBSD desktop is an ancient window manager called fvwm. I'm not sure if anyone uses it other than Theo himself. You can find various people online who have made it somewhat usable and not-ugly, but those kind of people enjoy suffering.
+
+We'll set the newer cwm as our default window manager in ~/.xsession.
+
+~/.xsession
+# use UTF-8 everywhere
+export LANG=en_US.UTF-8
+
+# specify location of kshrc
+export ENV=$HOME/.kshrc
+
+# load Xresources file
+xrdb -merge $HOME/.Xresources
+
+# set your background color
+xsetroot -solid dimgray
+
+# xidle will lock your display after a period of inactivity
+xidle &
+
+# sadly, xclock has a bug where the font selection is ignored when UTF-8
+# is enabled, so we unset LANG here.
+LANG= xclock -strftime "%a %e %b %Y %H:%M" &
+
+# disable system beep
+xset b off
+
+# if you have a ThinkPad, the following lines enable TrackPoint
+# scrolling by dragging with the middle button.
+xinput set-prop "/dev/wsmouse" "WS Pointer Wheel Emulation" 1 
+xinput set-prop "/dev/wsmouse" "WS Pointer Wheel Emulation Button" 2 
+xinput set-prop "/dev/wsmouse" "WS Pointer Wheel Emulation Axes" 6 7 4 5 
+
+# use caps lock as ctrl key
+setxkbmap -option ctrl:nocaps
+
+# start cwm!
+exec cwm
+
+A man's Xresources file is a very personal thing. You don't have to copy what I've done here. It's just some settings I find pleasant to use.
+
+~/.Xresources
+! ===== fonts
+Xft.autohint  : 0
+Xft.lcdfilter : lcddefault
+Xft.hintstyle : hintslight
+Xft.hinting   : 1
+Xft.antialias : 1
+Xft.rgba      : rgb
+! fixed is the one true font - use iso10646 for unicode characters
+*font         : -misc-fixed-medium-r-semicondensed-*-13-*-*-*-*-*-iso10646-1
+
+! ===== xidle
+! drag pointer to lower left corner to lock screen
+XIdle*position : sw
+! and leave it there for one second.
+XIdle*delay    : 1
+! also lock screen after 5 minutes idle
+XIdle*timeout  : 300
+
+! ===== xlock
+! actually turn the backlight off
+XLock.dpmsoff     : 1
+! plain white-on-black lock screen
+XLock.description : off
+XLock.echokeys    : off
+XLock.info        :
+XLock.background  : black
+XLock.foreground  : white
+XLock.mode        : blank
+XLock.username    : username: 
+XLock.password    : password: 
+XLock.font        : -misc-fixed-medium-r-normal-*-15-*-*-*-*-*-iso10646-1
+XLock.planfont    : -misc-fixed-medium-r-normal-*-13-*-*-*-*-*-iso10646-1
+
+! ===== xclock
+! digital clock in lower right-hand corner
+XClock*analog      : false
+XClock*twentyfour  : true
+XClock*padding     : 0
+XClock*geometry    : -2-2
+XClock*render      : false
+XClock*font        : -misc-fixed-bold-r-normal-*-13-*-*-*-*-*-iso10646-1
+XClock*height      : 12
+XClock*background  : dimgray
+XClock*foreground  : white
+XClock*borderWidth : 0
+
+! ===== xterm
+! zenburn theme - http://kippura.org/zenburnpage
+XTerm*background     : #3f3f3f
+XTerm*foreground     : #dcdccc
+XTerm*cursorColor    : #aaaaaa
+XTerm*colorUL        : #366060
+XTerm*underlineColor : #dfaf8f
+XTerm*color0         : #3f3f3f
+XTerm*color1         : #cc9393
+XTerm*color2         : #7f9f7f
+XTerm*color3         : #d0bf8f
+XTerm*color4         : #6ca0a3
+XTerm*color5         : #dc8cc3
+XTerm*color6         : #93e0e3
+XTerm*color7         : #dcdccc
+XTerm*color8         : #000000
+XTerm*color9         : #dca3a3
+XTerm*color10        : #bfebbf
+XTerm*color11        : #f0dfaf
+XTerm*color12        : #8cd0d3
+XTerm*color13        : #dc8cc3
+XTerm*color14        : #93e0e3
+XTerm*color15        : #ffffff
+
+! remove the additional black border
+XTerm*borderWidth            : 0
+XTerm*internalBorder         : 2
+! set TERM env variable to use 256 colors
+XTerm*termName               : xterm-256color
+! make alt key work normally
+XTerm*vt100.metaSendsEscape  : true
+! save ~10,000 lines of scrollback
+XTerm*v100.saveLines         : 10240
+! hide scrollbar
+XTerm*vt100.scrollBar        : false
+! terminal bell tells the window manager to raise urgent flag
+XTerm*vt100.bellIsUrgent     : true
+! no bold fonts - just use brighter colors
+XTerm*allowBoldFonts         : false
+! pressing a key automatically scrolls to the bottom
+XTerm*scrollKey              : true
+! don't allow terminal to go fullscreen
+XTerm*fullscreen             : never
+! clicking a line selects only from the current word forward
+XTerm*cutToBeginningOfLine   : false
+! and don't include a trailing newline in the selection!
+XTerm*cutNewline             : false
+! some black magic to change what characters XTerm considers "word delimiters"
+XTerm*charClass              : 33:48,36-47:48,58-59:48,61:48,63-64:48,95:48,126:48
+! select word on two clicks
+XTerm*on2Clicks              : word
+! select whole line on three clicks
+XTerm*on3Clicks              : line
+! shift + left click to open selection in web browser
+XTerm*VT100*Translations     : #override Shift : exec-formatted("chrome --enable-unveil '%t'", PRIMARY)
+
+OpenBSD's GTK port is built with the default key theme set to emacs (heresy!). This means that normal key shortcuts (like Ctrl-A to select all) don't work. You can fix that by changing the gtk-key-theme-name in the GTK configuration. First, make the directory:
+
+mkdir -p ~/.config/gtk-3.0
+
+Then create the file settings.ini with your desired customizations. Here's what I use:
+
+~/.config/gtk-3.0/settings.ini
+[Settings]
+gtk-theme-name=Adwaita
+gtk-icon-theme-name=Adwaita
+gtk-font-name=Arimo 9
+gtk-toolbar-style=GTK_TOOLBAR_ICONS
+gtk-toolbar-icon-size=GTK_ICON_SIZE_SMALL_TOOLBAR
+gtk-button-images=1
+gtk-menu-images=1
+gtk-enable-event-sounds=1
+gtk-enable-input-feedback-sounds=1
+gtk-xft-antialias=1
+gtk-xft-hinting=1
+gtk-xft-hintstyle=hintslight
+gtk-xft-rgba=rgb
+gtk-cursor-theme-size=0
+gtk-cursor-theme-name=Default
+gtk-key-theme-name=Default
+
+Finally, get yourself some decent looking fonts. Edit ~/.config/fontconfig/fonts.conf:
+
+~/.config/fontconfig/fonts.conf
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <!-- hinting/antialiasing settings -->
+  <match target="font">
+    <edit mode="assign" name="antialias">
+      <bool>true</bool>
+    </edit>
+    <edit mode="assign" name="hinting">
+      <bool>true</bool>
+    </edit>
+    <edit mode="assign" name="hintstyle">
+      <const>hintslight</const>
+    </edit>
+    <edit mode="assign" name="lcdfilter">
+      <const>lcddefault</const>
+    </edit>
+    <edit mode="assign" name="rgba">
+      <const>rgb</const>
+    </edit>
+  </match>
+
+  <!-- preferred fonts (first match will be used) -->
+  <alias>
+    <family>sans-serif</family>
+    <prefer>
+      <family>Arimo</family>
+      <family>Liberation Sans</family>
+      <family>DejaVu Sans</family>
+    </prefer>
+  </alias>
+  <alias>
+    <family>serif</family>
+    <prefer>
+      <family>Tinos</family>
+      <family>Liberation Serif</family>
+      <family>DejaVu Serif</family>
+    </prefer>
+  </alias>
+  <alias>
+    <family>monospace</family>
+    <prefer>
+      <family>Cousine</family>
+      <family>Liberation Mono</family>
+      <family>DejaVu Sans Mono</family>
+    </prefer>
+  </alias>
+</fontconfig>
+
+Note: if you run Chromium with --enable-unveil (as described below), you should create the file /etc/fonts/local.conf (as root) for the font configuration instead. The Chromium port does not currently include ~/.config/fontconfig in the list of unveiled paths.
+Fix Screen Tearing (Intel only)
+
+The default modesetting driver doesn't use vsync, so you'll get a lot of tearing when scrolling webpages or watching videos. If you have an Intel-based video chipset, you can switch to the intel driver to get smooth video.
+
+Create the /etc/X11/xorg.conf.d directory:
+
+mkdir /etc/X11/xorg.conf.d
+
+Then, create intel.conf with the following contents:
+
+/etc/X11/xorg.conf.d/intel.conf
+Section "Device"
+  Identifier "drm"
+  Driver "intel"
+  Option "TearFree" "true"
+EndSection
+
+Restart xenodm to restart the X server:
+
+rcctl restart xenodm
+
+With all the graphical goodness configured, the next step is to discover your new window manager.
+The CWM Window Manager
+
+Unlike fvwm, cwm is a somewhat recent development. It's a simple window manager with a keyboard-focused workflow, perfect for laptops. It's also very easy to learn: the man page is ten times shorter than that of fvwm.
+
+Your cwm configuration goes in ~/.cwmrc. You can read about all the configuration options on the man page. I've reproduced my config below to give you a head start.
+
+I have a long history with the i3 window manager, so I emulated most of i3's default keybindings with their cwm equivalents. The concepts are pretty similar in both: you have multiple numbered groups (basically virtual desktops), and can switch between them, move windows from one to the other, etc. There's also support for basic tiling, and it has a dmenu-like program launcher built right in!
+
+~/.cwmrc
+# automatically add new windows to the current group
+sticky yes
+# snap windows to edges at 4 pixels distance
+snapdist 4
+# leave a gap for xclock
+gap 0 14 0 0
+
+# set font for menus
+fontname "fixed:pixelsize=13:style=semicondensed"
+
+# remove all default keybindings
+unbind-key all
+
+# KEYBINDINGS:
+# 4 = mod (windows key)
+# S = shift
+# C = control
+# M = meta (alt)
+
+# mod + enter = new xterm
+bind-key 4-Return terminal
+# ctrl + alt + L = lock screen (xlock)
+bind-key CM-l lock
+# mod + backspace = hide window
+bind-key 4-BackSpace window-hide
+
+# mod + down arrow = lower window's focus
+bind-key 4-Down window-lower
+# mod + up arrow = raise window's focus
+bind-key 4-Up window-raise
+# mod/alt + tab = cycle through current windows
+bind-key 4-Tab window-cycle
+bind-key M-Tab window-cycle
+# mod/alt + shift + tab = same thing in reverse
+bind-key 4S-Tab window-rcycle
+bind-key MS-Tab window-rcycle
+# mod + w = kill window
+bind-key 4-w window-delete
+# set a window's label
+bind-key 4-n window-menu-label
+
+# mod + $N = show only windows for group $N
+# (you can think of this as switching to virtual desktop $N)
+bind-key 4-1 group-only-1
+bind-key 4-2 group-only-2
+bind-key 4-3 group-only-3
+bind-key 4-4 group-only-4
+bind-key 4-5 group-only-5
+bind-key 4-6 group-only-6
+bind-key 4-7 group-only-7
+bind-key 4-8 group-only-8
+bind-key 4-9 group-only-9
+
+# mod + shift +$N = move window to group $N
+bind-key 4S-1 window-movetogroup-1
+bind-key 4S-2 window-movetogroup-2
+bind-key 4S-3 window-movetogroup-3
+bind-key 4S-4 window-movetogroup-4
+bind-key 4S-5 window-movetogroup-5
+bind-key 4S-6 window-movetogroup-6
+bind-key 4S-7 window-movetogroup-7
+bind-key 4S-8 window-movetogroup-8
+bind-key 4S-9 window-movetogroup-9
+
+# mod + A = toggle showing windows from all groups
+bind-key 4-a group-toggle-all
+# mod + G = toggle current window's group membership
+bind-key 4-g window-group
+
+# mod + right arrow = cycle through the window groups
+# (you can think of this as switching to the next virtual desktop)
+bind-key 4-Right group-cycle
+# mod + left arrow = same thing in reverse
+bind-key 4-Left group-rcycle
+# mod + S = stick current window to be visible in all groups
+bind-key 4-s window-stick
+
+# mod + F = make current window fullscreen
+bind-key 4-f window-fullscreen
+# mod + M = maximize current window
+bind-key 4-m window-maximize
+# mod + equals = maximize window in vertical direction only
+bind-key 4-equal window-vmaximize
+# mod + shift + equals = maximize window in horizontal direction only
+bind-key 4S-equal window-hmaximize
+
+# mod + H,J,K,L = move window left, down, up, right 10 pixels
+bind-key 4-h window-move-left-big
+bind-key 4-j window-move-down-big
+bind-key 4-k window-move-up-big
+bind-key 4-l window-move-right-big
+
+# mod + shift + H,J,K,L = resize window left, down, up, right by 10 pixels
+bind-key 4S-h window-resize-left-big
+bind-key 4S-j window-resize-down-big
+bind-key 4S-k window-resize-up-big
+bind-key 4S-l window-resize-right-big
+
+# mod + V = tile windows vertically, current window to the left
+bind-key 4-v window-vtile
+# mod + V = tile windows horizontally, current window to the top
+bind-key 4-c window-htile
+
+# mod + / = show popup menu of current windows
+bind-key 4-slash menu-window
+# mod + d = show popup menu to run a command (configured below)
+bind-key 4-d menu-cmd
+# mod + ? = show popup menu to run an arbitrary command
+bind-key 4-question menu-exec
+# mod + . = show popup menu of known ssh hosts to connect to
+bind-key 4-period menu-ssh
+
+# mod + shift + R = restart cwm, reloading configuration
+bind-key 4S-r restart
+# mod + shift + E = log out
+bind-key 4S-e quit
+
+# unbind default mouse actions
+unbind-mouse M-1
+unbind-mouse CM-1
+unbind-mouse M-2
+unbind-mouse M-3
+unbind-mouse CMS-3
+
+# mod + left click drag = move window
+bind-mouse 4-1 window-move
+# mod + right click drag = resize window
+bind-mouse 4-3 window-resize
+# mod + middle click = lower window's focus
+bind-mouse 4-2 window-lower
+# mod + shift + middle click = hide window
+bind-mouse 4S-2 window-hide
+
+# these commands will appear in the command menu
+command xterm  xterm
+command chrome "chrome --enable-unveil"
+command xclock xclock
+command xcalc  xcalc
+
+# ignore these windows when tiling/cycling
+ignore xclock
+
+Customizing the Base Utilities
+You'll get a much more streamlined, well documented experience if you stick to utilities in the base system. Undeadly puts it best: when in doubt, use it from base.
+ksh
+
+OpenBSD's default shell is ksh. While it's not as feature-rich as bash, it's more than capable and has a few neat quirks all its own. The standard configuration is rather sparse, so feel free to borrow some of my configuration to feel more at home.
+
+ksh uses the $ENV environment variable to determine the location of its config file. Start by setting that in ~/.profile.
+
+~/.profile
+export ENV=$HOME/.kshrc
+
+Then you can edit ~/.kshrc.
+
+~/.kshrc
+# use vim if it's installed, vi otherwise
+case "$(command -v vim)" in
+  */vim) VIM=vim ;;
+  *)     VIM=vi  ;;
+esac
+
+export EDITOR=$VIM
+export FCEDIT=$EDITOR
+export PAGER=less
+export LESS='-iMRS -x2'
+export LANG=en_US.UTF-8
+export LC_CTYPE=en_US.UTF-8
+export CLICOLOR=1
+HISTFILE=$HOME/.ksh_history
+HISTSIZE=20000
+
+# emacs mode gives you the familiar Ctrl-A, Ctrl-E, etc
+set -o emacs
+
+# use colorls if it's installed, plain old ls otherwise
+if command -v colorls > /dev/null ; then
+  LS='colorls'
+else
+  LS='ls'
+fi
+alias ls="$LS -FHh"
+alias ll='ls -l'
+alias la='ls -lA'
+alias ..='cd ..'
+alias ...='cd ...'
+alias mkdir='mkdir -p'
+alias df='df -h'
+alias du='du -ch'
+alias weather='curl http://wttr.in/New_York'
+command -v neomutt > /dev/null && alias mutt='neomutt'
+alias svim="doas vim"
+alias svi="doas vi"
+
+# nice colored prompt that also sets xterm title
+_XTERM_TITLE='\[\033]0;\u@\h:\w\007\]'
+_PS1_CLEAR='\[\033[0m\]'
+_PS1_BLUE='\[\033[34m\]'
+case "$(id -u)" in
+  0) _PS1_COLOR='\[\033[1;31m\]' ;;
+  *) _PS1_COLOR='\[\033[32m\]'   ;;
+esac
+PS1='$_XTERM_TITLE\A $_PS1_COLOR\u@\h$_PS1_CLEAR:$_PS1_BLUE\w$_PS1_COLOR\$$_PS1_CLEAR '
+
+vi
+
+I always end up installing vim for serious editing of source code, but OpenBSD's base vi is blazing fast. If it had syntax highlighting, it would be my default editor. It's configuration lives at ~/.exrc.
+
+~/.exrc
+" display current mode (insert/normal)
+set showmode
+" show matching parens, braces, etc
+set showmatch
+" display row/column info
+set ruler
+" autoindent width = 2 spaces
+set shiftwidth=2
+" tab width = 2 spaces
+set tabstop=2
+" display all error messages
+set verbose
+" enable horizontal scrolling
+set leftright
+" use extended regular expressions
+set extended
+" case-insensitive search, unless an uppercase letter is used
+set iclower
+" incremental search
+set searchincr
+" print helpful messages (eg, 4 lines yanked)
+set report=1
+
+tmux
+
+tmux is also part of the OpenBSD base system. I use the following config to get vi-like navigation and a pretty status bar.
+
+~/.tmux.conf
+set -g default-terminal "screen-256color"
+
+# vi-like keybindings
+setw -g mode-keys vi
+bind h select-pane -L
+bind j select-pane -D
+bind k select-pane -U
+bind l select-pane -R
+bind-key -T copy-mode-vi 'v' send -X begin-selection
+bind-key -T copy-mode-vi 'y' send -X copy-selection
+
+# zenburn theme
+setw -g clock-mode-colour colour117
+setw -g mode-attr bold
+setw -g mode-fg colour117
+setw -g mode-bg colour238
+set -g status-bg colour235
+set -g status-fg colour248
+setw -g window-status-current-fg colour223
+setw -g window-status-current-bg colour237
+setw -g window-status-current-attr bold
+set -g message-attr bold
+set -g message-fg colour117
+set -g message-bg colour235
+
+# fancy status line: user@host, date, time
+set-option -g status-right "#(whoami)@#(hostname -s) #[fg=colour187,bold]%a %Y-%m-%d %H:%M"
+set -g status-right-length 50
+set -g status-left-length 20
+
+ssh
+
+Finally, since ssh is ubiquitous, here are some tweaks I find useful. The ControlPersist option is great, but it does require you to create the ~/.ssh/sockets directory.
+
+~/.ssh/config
+# don't drop connection if network is down temporarily (eg, suspend)
+TCPKeepAlive no
+# but do send ssh keepalives every minute to keep firewalls happy
+ServerAliveInterval 60
+ServerAliveCountMax 10
+# keep connections open for 4 hours, even after logging out
+ControlPersist 4h
+ControlMaster auto
+ControlPath ~/.ssh/sockets/socket-%r@%h:%p
+# allow host key verification via SSHFP records
+VerifyHostKeyDNS yes
+# cwm's ssh menu does not work with host hashing enabled
+HashKnownHosts no
+# automatically add ssh keys to running ssh agent
+AddKeysToAgent yes
+
+Sending Mail
+
+I like to have a working mail transfer agent on all my devices. Being able to pipe a command to mail can be surprisingly useful! OpenBSD includes the OpenSMTPD mail server in the base system. You can configure your own relay, or use something like GMail.
+
+First, grab a root shell and make a secrets file to store your mail credentials for the relay:
+
+/etc/mail/secrets
+myrelay relay_username:relay_password
+
+Be sure to lock down permissions on that file.
+
+chown root:_smtpd secrets
+chmod 640 secrets
+
+Then edit the smtpd config file at /etc/mail/smtpd.conf.
+
+/etc/mail/smtpd.conf
+listen on lo0
+
+table aliases file:/etc/mail/aliases
+table secrets file:/etc/mail/secrets
+
+action "local" mbox alias <aliases>
+action "relay" relay host smtp+tls://myrelay@mail.example.com:587 auth <secrets>
+
+match for local action "local"
+match for any action "relay"
+
+Restart smtpd for the changes to take effect.
+
+rcctl restart smtpd
+
+You should now have a working MTA. Test it out with the mail command. A line containing a single dot terminates the message.
+
+mail -s "test email from laptop" you@example.com
+This is a test message.
+.
+EOT
+
+You can check /var/log/maillog for any errors.
+Installing Packages
+
+The base system is great, but you'll most likely want a web browser. On OpenBSD, you can install packages with pkg_add:
+
+doas pkg_add chromium
+
+You can search for other packages to install with the pkg_info command.
+
+pkg_info -Q python
+
+However, we should probably talk a little bit about the browser situation on OpenBSD first.
+Chromium on OpenBSD
+
+Firefox and Chromium are basically your only options for a decent browser that works with today's JavaScript cesspool modern web. I've found Chromium to be much faster than Firefox, so that's what I use. However, I stay cognizant of that fact that this browser is somewhat of a botnet distributed by the world's most insidious advertising company.
+
+Be sure to turn off all it's phone-home settings in the settings panel:
+
+    disable Auto Sign-In
+    set default search engine to DuckDuckGo (or anything except Google—lots of additional telemetry gets turned on by default when Google is the default search engine)
+    disable "prediction service to help complete searches and URLs"
+    disable "prediction service to load pages more quickly"
+    disable "web service to help resolve navigation errors"
+    disable "Safe Browsing"
+    disable "improve Safe Browsing"
+    disable "Do Not Track" header—it really just makes it easier to fingerprint you.
+    block third-party cookies
+    disable "offer to translate pages"
+    disable "show notifications when new printers are detected"
+    disable "continue running background apps when Chromium is closed"
+
+Also, set the following in chrome://flags:
+
+    Smooth Scrolling: (personal preference)
+    UI Layout for the browser's top chrome: set to "Normal" to get the classic Chromium look back
+    Identity consistency between browser and cookie jar: set to "Disabled" to keep Google from hijacking any Google login to sign you into Chrome
+    SafeSearch URLs reporting: disabled
+
+It should go without saying, but don't sign in to Chrome.
+
+Also, Chromium on OpenBSD recently got unveil support. If you run it with --enable-unveil, Chromium will be prevented (at the OS level) from accessing anything other than your ~/Downloads folder.
+
+Installing uBlock Origin is a must—almost all websites crawl without it. Switching to DuckDuckGo, along with unticking all the Google botnet "features" on the settings page, will greatly reduce the amount of telemetry Google collects about you.
+
+Also be sure to install uBlock Origin Extra, which protects you from certain sites that circumvent third-party cookie blocking.
+
+OpenBSD does have packages for Iridium Browser, but it's based on an older Chromium version. You'll get added privacy by using it, since they disable things at compile time that simply can't be turned off in Chromium. However, it's inherently less secure since you won't have the latest patches and security fixes.
+
+Besides, using uBlock, disabling third party cookies, and turning off all the Google stuff will do 90% of what Iridium does.
+Multimedia and Battery
+
+All that's left now is to get sound working, keyboard shortcuts for changing the volume, figure out which commands set the display brightness, determine which ACPI events we need to hook into to get the laptop to suspend when you close the lid...
+
+JUST KIDDING! All that stuff works out of the box (at least on most ThinkPads). You can tell the OpenBSD developers actually dogfood this stuff, unlike another BSD derivative which I won't slander here.
+
+If you do want to fiddle with the audio settings, check out mixterctl. For example, you can get the current volume with the following:
+
+mixerctl ouputs.master
+
+Just remember that audio recording is now disabled by default if you want to use the microphone.
+
+To get the current battery status, just use apm.
+
+$ apm
+Battery state: high, 69% remaining, 274 minutes life estimate
+A/C adapter state: not connected
+Performance adjustment mode: auto (1200 MHz)
+
+Updating the Base System
+
+OpenBSD releases binary patches for security issues found in the base system, which you can download and apply via the syspatch utility. Just run it as root:
+
+syspatch
+
+Be sure to join the announce@openbsd.org mailing list, and run syspatch whenever a security errata is released. You can subscribe to the official OpenBSD mailing lists here.
+M:Tier
+
+OpenBSD does not release binary updates or patches for packages in the ports tree. If there's a security update for a third-party package, you'll need to build it yourself, or subscribe to M:Tier. It's free for the most recent version of OpenBSD, but packages for older versions require a paid subscription.
+
+I'm currently using M:Tier on my laptop. A lot of people criticize the fact that OpenBSD delegates security updates to a third party. However, OpenBSD is a small project, and M:Tier frees up a lot of development time that would otherwise be spent on packaging drudgery. Also, last I checked, they had a few OpenBSD committers on the payroll.
+
+To use M:Tier, just download and run their openup script. As root:
+
+ftp -o /usr/local/sbin/openup https://stable.mtier.org/openup
+chmod +x /usr/local/sbin/openup
+
+Then, just run openup as root:
+
+openup
+
+This will import their signing key and automatically update your base system via syspatch, as well as any available packages. You may want to add it as a cron job.
+Other Resources
+
+Other than the awesome man pages, here's some additional OpenBSD resources that I've found helpful.
+
+    OpenBSD FAQ: additional documentation in more of a how-to style. Definitely worth reading all the way through.
+    OpenBSD Journal: the LWN.net of the OpenBSD world.
+    Roman Zolotarev's Blog: this guy has a ton of resources about getting the most out of OpenBSD. Follow him on Twitter, lots of great tips!
+
+What are your OpenBSD laptop tweaks? Did I miss anything? Let me know on Twitter.
+
+Also, thanks to @blakkheim for corrections and suggestions on this post!
+by Cullum Smith
