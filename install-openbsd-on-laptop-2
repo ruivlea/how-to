@@ -1,0 +1,555 @@
+https://sohcahtoa.org.uk/openbsd.html
+
+Running OpenBSD 7.1 on your laptop is really hard (not)
+
+OpenBSD 7.1 (i386) with xfce 4.16 on a Thinkpad X60 (2014) with a 500Gb mechanical drive and 3G of RAM. I could live with this system. The OpenBSD package repository no longer includes a 32 bit build of Firefox, so I use Seamonkey as the Web browser. The steps below show examples from OpenBSD 7.0 except for the sections on xfce, the .xsession file and on apmd. Links to the man pages have been updated to 7.1. --April 23 2022
+
+Previous versions of this page [ 5.5 | 6.2 | 6.3 | 6.4 | 6.5 | 6.6 | 6.7 | 6.8 | 7.0]
+Who is this page for?
+
+This page is aimed at people who are familiar with Linux and who wish to explore OpenBSD. I'm assuming that you
+
+    have successfully installed Linux
+    can use a terminal
+    can use a text editor such as nano to modify configuration files
+
+Why does this page exist?
+
+The OpenBSD base system comes with complete and carefully edited documentation for each command and for many of the configuration files. So why did I write this page?
+
+I personally found it difficult to select and apply the information I needed to a specific task (in my case installing a desktop environment on a laptop). It took me a bit of time to work out how OpenBSD worked and several iterations to work out which bits of information were important. I also needed to 'unlearn' some Linux thinking. I wrote the first version of this page simply to remind myself of the steps and commands to use. I've been rewriting it for each version of OpenBSD to see how the project develops.
+
+I hope this page will
+
+    save you time in setting up a basic desktop environment
+    allow you to contrast the OpenBSD approach to that of Linux for a familiar task
+    point you to the project's own documentation for each step
+
+Sources of information about OpenBSD
+
+    OpenBSD FAQ. Starting with Migrating to OpenBSD helps to introduce the vocabulary used in OpenBSD documents (e.g. 'ports' and 'packages' and so on). Most of the steps in this page start with a link to the relevant section in the FAQ
+    OpenBSD 7.1 man pages for the i386 architecture. Available *within* the system.
+    The mail message found at /var/mail/yourusername after a fresh install
+    The pkg-readmes to be found at /usr/local/share/doc/pkg-readmes/ after installing binary packages using pkg_add
+    The daemonforums OpenBSD section. This is not an 'official' OpenBSD source but there are knowledgable people on the forum.
+
+Be careful about searching for information about OpenBSD on the Web. Many helpful people publish pages and social media posts about their discoveries but the information can be out of date. The OpenBSD project is fine about changing the way things work and quite good at getting rid of old things. You will notice that I associate this guide with a specific OpenBSD version and that I try to keep it up to date with the releases.
+Install OpenBSD following the FAQ
+
+Read the OpenBSD FAQ - Installation Guide. The Pre-Installation Checklist section mentions the need to check that your laptop is compatible with OpenBSD. Pain points are video cards (nvidia issues) and the WiFi adaptor (see the Connect to the Internet section on this page).
+
+I booted my ancient Thinkpad X60 from a USB stick I had prepared with the i386 architecture install image. I avoid dual booting operating systems so that OpenBSD is the only operating system to be installed on the laptop.
+
+The OpenBSD installer asks a series of questions and gives sensible defaults in [square brackets]. I chose to use the [W]hole drive for OpenBSD and to accept [A]utomatic partitioning.
+
+There were three points in the installation where I had to provide non-default input (in addition to providing a root password and a user account and password)...
+
+    Answer Yes to the question about the X Window System being started by xenodm. Xenodm is the OpenBSD fork of the xdm display manager. The OpenBSD FAQ discourages use of the startx command to manage X sessions.
+    In the section Let's install the sets! you have to specify that the sets are located on disk, No the disk is not mounted, and then type the label of the USB stick (probably sd1).
+    You just need to answer Yes to the question about the missing SHA256.sig file. See the FAQ for the reason!
+
+After the installer completes (about five minutes on the X60) you can reboot into the graphical log-in screen and type your user name and password.
+Default X Window session (fvwm)
+
+Background reading: OpenBSD FAQ - The X Window System.
+
+OpenBSD base contains three window managers for use with X Windows. The default choice is an ancient version of fvwm and this is what should visible now.
+
+There should be an xterm terminal window in the top left of the screen. The default terminal prompt is the machine name ('foo' for me) and the $ sign showing that the terminal has ordinary user rights. Click on the title bar of that window to give it focus (and bring it to the front if there is another window in the way). That terminal window will enable the completion of the next 4 steps.
+
+The fonts might be very small on a modern laptop screen. With the mouse pointer over the window press Ctrl and click the right hand mouse button. A font menu will appear. Select Huge size to get readable characters.
+
+The 'system bell' can become intrusive. To silence it on a temporary basis just type
+
+foo$ xset b off
+
+If the fvwm desktop in all its 90s glory becomes annoying a console (aka tty) can be used. Ctrl-Alt F2 will take you to a tty login from where all the commands in the next 4 sections can be run. Ctrl-Alt F5 returns to the X Windows 'shell'.
+
+If the computer must be closed down before the xfce4 desktop environment is installed and configured use these commands as root
+
+foo$ su
+password:               # type the root password
+foo# shutdown -ph now
+
+Silence the bell permanently and avoid starting the xconsole
+
+You can edit the /etc/X11/xenodm/Xsetup_0 file as root so that the bleep is off and the xconsole does not start up each time you log in. The lines I changed in this file are shown below...
+
+# Edits to silence the bell and not have the xconsole
+#${exec_prefix}/bin/xsetroot -fg \#6f6f6f -bg \#bfbfbf -bitmap ${prefix}/include/X11/bitmaps/root_weave
+#${exec_prefix}/bin/xconsole -geometry 480x130-0-0 -daemon -notify -verbose -fn fixed -exitOnFail
+${exec_prefix}/bin/xsetroot -solid darkgreen
+${exec_prefix}/bin/xset b off
+${exec_prefix}/bin/xset b 0 0 0
+
+I commented out the line that starts the xconsole and added two lines that should stop the bleeps. I also change the background colour of the X11 screen for fun.
+
+You need to edit this file as root. Become root by typing su - in a terminal window and typing the root password. There are two editors available on the terminal in a default OpenBSD install, vi and mg. The mg editor is a very cut-down work-alike for emacs. I personally find nano easier to use and I usually edit this file after I have wifi working and have installed nano.
+Connect to the Internet and update
+
+Skim the OpenBSD FAQ - Networking, especially the Wireless Networking section.
+
+Networking interfaces are named by the type of card or driver used (no wlan0 or eth0) and interfaces are managed using ifconfig. The X60 has the following interfaces available when I remember to plug in the old Netgear USB WiFi adaptor...
+
+foo# ifconfig -a | grep flags
+lo0: flags=8049 mtu 32768
+em0: flags=8802 mtu 1500
+enc0: flags=0<>
+urtw0: flags=808a43 mtu 1500
+pflog0: flags=141 mtu 33172
+
+So I have one ethernet card em0 and one wifi card urtw0. The lo, enc and pflog are virtual interfaces that are enabled by default and used by the system.
+
+Each supported driver has a man page e.g. man em for the Intel ethernet driver on this machine. The man urtw page mentions that you don't need any additional firmware. Some wifi cards, e.g. Intel (iwm) need to install additional firmware.
+
+There is a list of the supported WiFi cards in the Wireless Networking section of the OpenBSD FAQ.
+Wired network, supported ethernet
+
+If you can plug a network cable into your router, you can start and Internet connection by issuing these commands in a terminal window.
+
+foo# ifconfig em0 up
+foo# dhclient em0
+
+You can test the connection and DNS lookup using ping
+
+foo$ ping google.com
+PING google.com (142.250.200.46): 56 data bytes
+64 bytes from 142.250.200.46: icmp_seq=0 ttl=55 time=48.536 ms
+64 bytes from 142.250.200.46: icmp_seq=1 ttl=55 time=65.286 ms
+64 bytes from 142.250.200.46: icmp_seq=2 ttl=55 time=55.360 ms
+64 bytes from 142.250.200.46: icmp_seq=3 ttl=55 time=64.321 ms
+^C
+--- google.com ping statistics ---
+4 packets transmitted, 4 packets received, 0.0% packet loss
+round-trip min/avg/max/std-dev = 48.536/58.375/65.286/6.874 ms
+
+Once connected you can issue the fw_update and syspatch commands (see below).
+Wifi using card with firmware that is in base
+
+I have used my external usb WiFi adaptor to connect to WiFi without needing extra firmware.
+Home WiFi
+
+To connect to a WiFi network called KEITHS-HOUSE automatically on boot you can use a hostname.if file with the lines below where pass_phrase is the password.
+
+foo$ cat /etc/hostname.urtw0
+join KEITHS-HOUSE wpakey pass_phrase
+dhcp
+
+If you don't want to deal with vi or mg, you can use the echo command to add the lines to this file (notice the use of >> in the second line so the dhcp command is appended to the file)...
+
+foo# echo "join KEITHS-HOUSE wpakey pass_phrase" > /etc/hostname.urtw0
+foo# echo "dhcp" >> /etc/hostname.urtw0
+foo# sh /etc/netstart
+
+The sh /etc/netstart command can be used to restart networking after changes to the configuration files.
+Manually connect to a WiFi hotspot
+
+See man ifconfig especially the section about IEEE 802.11 (WIRELESS DEVICES). Note that the commands below use the iwm0 interface on another machine. Just substitute the WiFi driver for your card for iwm.
+
+You can find out what WiFi connections are available using the ifconfig iwm0 scan command
+
+foo# ifconfig iwm0 scan
+
+Below is an extract of the output of this command before I connected to any WiFi network (some IP numbers and MAC addresses altered)...
+
+foo# ifconfig iwm0 scan 
+iwm0: flags=808843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST,AUTOCONF4> mtu 1500
+    lladdr e8:ff:ff:ff:ff:ff
+    index 2 priority 4 llprio 3
+    groups: wlan egress
+    media: IEEE802.11 autoselect (HT-MCS0 mode 11n)
+    status: active
+    ieee80211: join KEITHS-HOUSE chan 9 bssid 28:ff:ff:ff:ff:1f 49%   wpakey wpaprotos wpa2 wpaakms psk wpaciphers ccmp wpagroupcipher ccmp
+    nwid "Mobile Hotspot" chan 6 bssid a4:ff:ff:ff:ff:ff 89% HT-MCS7 privacy,spectrum_mgmt,short_slottime,wpa2 
+    nwid SKY1296E chan 11 bssid d0:ff:ff:ff:ff:ff 52% HT-MCS15 privacy,short_slottime,radio_measurement,wpa2 
+    nwid "" chan 9 bssid 28:ff:ff:ff:ff:ff 49% HT-MCS15 privacy,short_preamble,short_slottime,wpa2
+
+As you can see, my home Wifi KEITHS-HOUSE is still available and because it is mentioned in the hostname.iwm0 file I can use the ifconfig if join command to reconnect to it when I get back to the house.
+
+There is also "Mobile Hotspot" which is my phone's WiFi hotspot. Notice how WiFi connection names with spaces in them are in quotes. The information line for "Mobile Hotspot" contains wpa2 so I know that my hotspot needs wpa authentication and I'll need to know the password. My password is of course password in the example below.
+
+The commands below will stop and restart the imw0 WiFi card to 'forget' the home WiFi if it is still running and then connect to "Mobile Hotspot"...
+
+foo# ifconfig iwm0 down
+foo# ifconfig iwm0 up
+foo# ifconfig iwm0 nwid "Mobile Hotspot" wpakey password
+foo# dhclient iwm0
+
+Once you get home again, you can rejoin the KEITHS-HOUSE network using the ifconfig iwm0 join command...
+
+foo# ifconfig iwm0 join KEITHS-HOUSE
+
+Because the hostname.iwm0 file contains the password and the dhcp line you don't need to type those.
+Update the firmware (fw_update)
+
+Example dialogue below from OpenBSD 7.0 on a Thinkpad L440.
+
+If you can get an Internet connection on a laptop you can update the firmware using the fw_update command...
+
+foo# fw_update
+inteldrm-firmware-20201218: ok
+intel-firmware-20210608v0: ok
+iwm-firmware-20210512: ok
+uvideo-firmware-1.2p3: ok
+vmm-firmware-1.14.0: ok
+foo#
+
+As you can see above my Thinkpad L440 can use firmware for the built in WiFi, the video card and the processor microcode.
+What if the WiFi card won't work without firmware and you don't have a wired connection?
+
+The fw_update man page mentions the fw_update -p flag. You can download the WiFi firmware direct from OpenBSD's firmware archive on another machine, copy it to a usb stick, mount that stick on OpenBSD and then supply the path to the firmware package in the fw_update -p command.
+
+I haven't tested this process myself as I can always plug a network cable into my router.
+Update the base system (syspatch)
+
+Example dialogue below from OpenBSD 7.0.
+
+Read the OpenBSD FAQ - System Management page about Security Updates. For the last few versions, OpenBSD has provided binary updates using the syspatch command. You can find details of the patches available by checking the Erata page for the OpenBSD version you have.
+
+foo# syspatch
+Get/Verify syspatch70-001_nsd.tgz 100% |****************|   760 KB   00:01
+Installing patch 001_nsd
+(...snipped lines)
+Get/Verify syspatch70-008_mrt.tgz 100% |****************|   139 KB    00:00    
+Installing patch 008_mrt
+Relinking to create unique kernel... done; reboot to load the new kernel
+Errata can be reviewed under /var/syspatch
+foo#
+
+Install third party packages
+
+See OpenBSD FAQ - Package Management.
+
+Software not included in the OpenBSD base is ported to OpenBSD by volunteers in the ports team. The pkg_add command is used to install pre-compiled binary packages. There is dependency tracking and packages can be updated using pkg_add -u and deleted using the pkg_delete command.
+
+OpenBSD has a global mirror system that is accessed through a content delivery network and the address of the package repository is written to /etc/installurl during installation. The commands below will install my preferred command line editor nano.
+
+The example below is from OpenBSD 7.0
+
+foo# pkg_add nano
+quirks-4.54 signed on 2022-01-09T19:08:35Z
+quirks-4.54: ok
+nano-5.8:libiconv-1.16p0: ok
+nano-5.8:gettext-runtime-0.21p1: ok
+nano-5.8: ok
+
+The quirks-4.54 package is a special internal package that is loaded every time you use pkg_add. For details of how to remove packages and then remove dependencies that are no longer required, see man pkg_delete and the FAQ. In OpenBSD 7.1 look for quirks-5.5
+Install a desktop environment, a Web browser and a pdf reader
+
+Some people seem to like the default fvwm window manager with some careful configuration changes. Others prefer the cwm window manager that is available within OpenBSD. Personally, I find a 'traditional' desktop environment easier to use and more familiar to other people. I like the xfce desktop environment, but Gnome, Mate and KDE are also available in packages.
+
+The OpenBSD port of xfce4 is version 4.16 and the commands below will provide a full install of xfce and a Web browser and a pdf document reader.
+
+The OpenBSD project's page about the i386 architecture is clear that some packages may not be available for the 32 bit processor. One casualty is Firefox, so I've use Seamonkey on this old Thinkpad X60. I also use xpdf as the reader for pdf files as it uses the venerable Motif graphics library in preference to the heavier libraries.
+
+foo# pkg_add xfce xfce-extras seamonkey xpdf xfce4-power-manager upower
+
+This command will take some time to return as pkg_add will fetch the dependencies for each of the packages listed above - dozens in the case of Xfce.
+
+foo# pkg_add xfce xfce-extras firefox evince xfce4-power-manager upower
+quirks-4.54 signed on 2022-01-09T19:08:35Z
+|No change in quirks-4.54
+
+...some significant time depending on the internet connection...
+
+xfce4-power-manager-4.16.0:consolekit2-1.2.4: ok
+xfce4-power-manager-4.16.0: ok
+#foo
+
+Alternative packages (Evince pdf reader)
+
+This example is from OpenBSD 7.0 and shows how some packages provide alternative compilation configurations. The Evince document reader is part of Gnome.
+
+pkg_add will stop when it reaches the document reader Evince and offer you a choice of two versions of the package, each compiled with different configuratons...
+
+Ambiguous: choose package for evince
+a       0: <None>
+        1: evince-40.4
+        2: evince-40.4-light
+Your choice: 2
+evince-40.4-light:libhandy-1.4.0: ok
+evince-40.4-light:unrar-6.02v2: ok
+evince-40.4-light:texlive_synctex-2020p0: ok
+evince-40.4-light: ok
+
+Option 1 will pull in a large number of Gnome libraries. Option 2 has been provided by the port maintainer for those of us who wish to use Evince to read pdf files with a different desktop or window manager. I use option 2 myself.
+The package readmes (xfce4 .xsession file)
+
+Some of the more complex packages come with readme files installed to /usr/local/share/doc/pkg-readmes/. The pkg-readmes for the xfce and firefox packages will be essential reading in the next section.
+
+The example below is from OpenBSD 7.0, the output is very similar for OpenBSD 7.1.
+
+Running tags: ok
+The following new rcscripts were installed: /etc/rc.d/gitdaemon /etc/rc.d/messagebus /etc/rc.d/saslauthd /etc/rc.d/svnserve
+See rcctl(8) for details.
+New and changed readme(s):
+        /usr/local/share/doc/pkg-readmes/consolekit2
+        /usr/local/share/doc/pkg-readmes/dbus
+        /usr/local/share/doc/pkg-readmes/ffmpeg
+        /usr/local/share/doc/pkg-readmes/firefox
+        /usr/local/share/doc/pkg-readmes/git
+        /usr/local/share/doc/pkg-readmes/glib2
+        /usr/local/share/doc/pkg-readmes/gnupg
+        /usr/local/share/doc/pkg-readmes/gtk+2 
+        /usr/local/share/doc/pkg-readmes/gtk+3
+        /usr/local/share/doc/pkg-readmes/sdl2
+        /usr/local/share/doc/pkg-readmes/upower
+        /usr/local/share/doc/pkg-readmes/xdg-utils
+        /usr/local/share/doc/pkg-readmes/xfce
+--- +hunspell-1.7.0 -------------------
+Install mozilla dictionaries for extra hunspell languages.
+e.g.
+    # pkg_add mozilla-dicts-ca
+foo#
+
+Shutdown from within xfce
+
+The package readme for xfce at /usr/local/share/doc/pkg-readmes/xfce explains that you can add your username to the operator group and be able to shutdown from the xfce menu.
+
+foo# usermod -G operator username
+foo# groups username
+keith wheel operator
+
+All that is needed to make xfce the desktop is a couple of lines in the .xsession file...
+
+foo$ cat .xsession
+~/.profile
+/usr/local/bin/startxfce4
+
+The ~/.profile line was suggested by a reader as being needed to start xfce4 at all from the xenodm login. In my case, the addition of that line seems to start xfce more quickly. I think we are seeing differences between the graphics hardware and drivers. I am using old Thinkpads, things may have changed on more recent hardware.
+
+Top tells me that d-bus (aka messagebus) is still running when I start xfce in this way, but there is no need to enable messagebus explicitly with an rcctl command.
+Enable power management (big change with OpenBSD 7.1)
+
+See OpenBSD FAQ - System Management / System daemons.
+
+To enable suspend and resume and to run Xfce with the ability to control the power settings and to shut down and reboot, you need to enable the apmd daemon...
+
+In OpenBSD 7.1 the recommended way to enable and start daemons is using the rcctl command as root. The commands below will enable and start the OpenBSD power manager daemon apmd.
+
+foo$ su -
+Password:
+foo# rcctl enable apmd
+foo# rcctl set apmd flags -L
+foo# rcctl start apmd
+apmd(ok)
+
+The rcctl program actually adds lines to the file /etc/rc.conf.local and these lines are executed at startup. You can edit /etc/rc.conf.local directly but using rcctl provides a layer of error checking &c.
+
+foo# cat /etc/rc.conf.local
+apmd_flags= -L
+xenodm_flags=
+foo#
+
+Notice how apmd has the -L set. The big change in OpenBSD 7.1 is that apmd -A that sets 'automatic' power management defaults to full processor speed when mains power is available. In the case of the Thinkpad X60 this means that both cores are running at something like 1860MHz continuously. Things get warm, sysctl tells me that the processor temperature is around 95 °C. The OpenBSD project has a history of removing features and functionality from the core distribution if the code becomes unreliable or causes wider issues, so one has to shrug and deal with the situation.
+
+Fortunately Solène Rapenne has put together a user space daemon that can recover the previous behaviour of apmd -A when this laptop is plugged in. The blog article summarises the basic commands needed to compile, install and configure her obsdfreqd daemon, and the code repository documents more options. It still seems to me a little odd that you have to compile and confugure a daemon to regain sensible defaults for power management. Solène appears to be ensuring that her code is compatible with OpenBSD's format for ports, so I'm hoping that this daemon will become available as a binary package in future versions.
+
+The following instructions are taken from the blog post
+
+foo# pkg_add git
+foo$ cd /tmp/ && git clone https://tildegit.org/solene/obsdfreqd.git
+foo$ cd obsdfreqd
+foo$ make
+foo# make install
+foo# doas rcctl enable obsdfreqd
+foo# doas rcctl start obsdfreqd
+
+I rebooted after starting the obsdfreqd daemon, and this laptop was idling at around 1GHz and 65 °C on mains which is similar to the previous default behaviour with automatic power management set.
+Memory limits in /etc/login.conf)
+
+Code examples in this section are from OpenBSD 7.0 as there has been no change.
+
+The /etc/login.conf file sets up the environment when a user logs in, and that includes setting some resource limits. A default OpenBSD install puts quite a low limit on the memory that can be used by each program so you might want to edit the login.conf file to increase the allocation.
+
+Adding your user to the staff group means that you can modify the resource limits for the staff users in login.conf...
+
+foo$ su -
+Password:
+foo# usermod -G staff keith                                             
+foo# mg /etc/login.conf
+foo# cat /etc/login.conf
+
+As root I edited the login.conf file so that the staff:\ stanza has a limit of 4Gb for each program...
+
+#
+# Staff have fewer restrictions and can login even when nologins are set.
+#
+staff:\
+    :datasize-cur=2048M:\    [increased from 1000M]
+        :datasize-max=infinity:\
+        :maxproc-max=512:\
+    :maxproc-cur=256:\
+    :ignorenologin:\
+    :requirehome@:\
+    :tc=default:
+...
+
+I'm not actually sure that I need to add my user to the staff group. Instead, I could have altered the default stanza (users with no 'special' role have resource limits set by the default stanza). I'm still researching this point.
+Allow user mounting of external drives (doas)
+
+Code examples in this section are from OpenBSD 7.0 as there has been no change in the xfce version or the commands.
+
+See OpenBSD FAQ - Disk setup, man doas, man doas.conf, and man ntfs-3g after installation. The ntfs_3g package is not part of base so the man page isn't online at the man.openbsd.org Web site.
+
+One of the biggest differences in everyday desktop use between Linux and OpenBSD is the approach to mounting external storage. Automounting of storage sticks does not just happen in OpenBSD. Remember from installation that SCSI-like (i.e. SATA) hard drives are numbered sd0, sd1 and not sda, sdb as in Linux.
+
+Install pkg ntfs_3g to provide the ntfs-3g command if like me you use ntfs formatted external hard drives...
+
+foo$ su -
+Password:
+foo# pkg_add ntfs_3g                                                    
+quirks-4.54 signed on 2022-01-09T19:08:35Z
+ntfs_3g-2017.3.23p2:e2fsprogs-1.46.2p0: ok
+ntfs_3g-2017.3.23p2: ok
+foo#
+
+In OpenBSD the doas command replaces the sudo command to allow users to issue a restricted set of commands as root.
+
+Add the following lines to a /etc/doas.conf file
+
+permit nopass USER as root cmd mount
+permit nopass USER as root cmd umount
+permit nopass USER as root cmd ntfs-3g
+
+I need to make a directory in my home drive to mount the usb stick to...
+
+foo$ pwd      
+/home/keith
+foo$ mkdir usb
+foo$ dmesg | grep sd1
+sd1 at scsibus4 targ 1 lun 0: <Kingston, DataTraveler 2.0, 1.00> removable serial.09511603000059188419
+sd1: 3852MB, 512 bytes/sector, 7888896 sectors
+
+To mount a usb stick, in this case FAT format, I run the following commands...
+
+foo$ doas mount /dev/sd1i ~/usb
+foo$ ls usb
+daffs.jpg
+daffs.png
+gcse-rules-and-tools-20130829.odt
+music_for_programming_61-linnley.mp3
+
+Unmount...
+
+foo$ doas umount ~/usb
+foo$ ls usb
+
+Same for an external hard drive with ntfs format but using the ntfs-3g command instead of mount...
+
+foo$ mkdir wd
+foo$ dmesg | tail
+umass0 at uhub3 port 1 configuration 1 interface 0 "Western Digital Elements 10B8" rev 2.10/10.12 addr 3
+...
+foo$ doas ntfs-3g /dev/sd1i ~/wd
+foo$ ls wd
+BAES      Music     Software  T60       X220-MINT X61ath    X61s      iso
+L440      Pictures  T42       T61       X220n     X61new    X61s-RC1     stuff
+foo$ umount ~/wd
+foo$ doas umount ~/wd
+foo$ ls wd
+
+All works...
+Use xfce4-mount for graphical mounting
+
+It is nicer for desktop users to be able to mount and unmount a device graphically.
+
+The xfce4-mount allows the mounting and unmounting of USB sticks from the xfce panel.
+
+Add an icon for the plugin to the XFCE4 panel by right-clicking on the panel and selecting Panel | Add New Items and searching for mount.
+
+By default, xfce4-mount-plugin lists all the devices including the default local hard drive including all the partitions on sd0. I can set options to prevent that and to use a custom mount command. Right click over the xfce4-mount icon and select Properties | File Systems tab. Add the pattern /dev/sd0* to the Exclude specified file systems textbox so the local drive is not listed.
+
+Right-click on the xfce4-mount icon, and select Preferences | Commands and write the following in the Custom Commands textboxes, after ensuring that the Custom Commands checkbox was ticked...
+
+doas mount %m
+doas umount %m
+
+Now to ensure that a USB stick is listed in the xfce4-mount-popup list, you have to add a line for the device to /etc/fstab...
+
+foo# echo "/dev/sd1i /home/keith/usb msdos rw,noauto 0 0" >> /etc/fstab
+
+Using an fstab entry like this means that only one vfat formatted USB thumb drive will be listed and available with mouse clicks.
+
+I have not yet worked out a way of automounting a mix of VFAT and NTFS drives. Probably a script run instead of doas mount that will work out what drive it is and mount it to an appropriate mount point...
+Reinstall with hard drive encryption (optional)
+
+Below last tested with OpenBSD 7.0. FAQ seems to be unchanged.
+
+My threat model for this laptop includes casual theft or me leaving it on the bus. A simple drive encryption setup will deny a potential thief or opportunistic finder access to my data. I chose not write random numbers to the whole drive.
+
+Using whole drive encryption on OpenBSD is covered in the OpenBSD FAQ - Disk Setup / RAID and disk Encryption / Full Disk Encryption and I used the example commands exactly except modified to match the disk numbering on this machine.
+
+The process in outline is...
+
+    Boot from the OpenBSD install USB stick
+    Exit to Shell
+    Initialise the disk (MBR or GPT as appropriate]
+    Set up a softraid partition (say sd0)
+    Build the encrypted block device within the partition using the bioctl command. This becomes sd2 because the installer USB stick is sd1. Set a pass phrase for the disk here
+    Resume the installation and use sd2 as the disk to install OpenBSD to. I just accept the [A]uto partition choice so disklabel makes the usual partitions within sd2
+
+Disk numbering
+
+See The OpenBSD FAQ - Disks and Partitions as well as man 4 sd.
+
+This laptop uses a single SATA hard drive so the machine's disk is recognised as sd0 by the installer. The USB stick that I booted the OpenBSD installer from is identified as sd1. The softraid block device I'm going to create will be recognised as sd2. That is the device on which I'm going to install OpenBSD using the automatically created partitions. Once the installation is complete the installation disk is renumbered to sd1 when you reboot. A feature of OpenBSD is that the raw block device corresponding to sd2 is at /dev/rsd2c.
+Example commands used on a BIOS X60 laptop
+
+The commands I actually used are shown below with indication of what the output might look like (copied from the FAQ) for guidance
+
+Preparing the large disk partition to hold our softraid device
+
+[S]hell
+# cd /dev && sh MAKEDEV sd0
+[skipped the random number step]
+# fdisk -iy sd0   ##   Bios laptop. See FAQ for UFEI / GPT laptop
+# disklabel -E sd0
+Label editor (enter '?' for help at any prompt)
+sd0> a a			
+offset: [64]
+size: [much larger than FAQ example] *
+FS type: [4.2BSD] RAID
+sd0*> w
+sd0> q
+No label changes.
+
+Setting up the encrypted softraid device and setting a passphrase
+
+# bioctl -c C -l sd0a softraid0
+New passphrase:
+Re-type passphrase:
+sd2 at scsibus2 targ 1 lun 0:  SCSI2 0/direct fixed
+sd2: 320000MB, 512 bytes/sector, [loadsa] sectors
+softraid0: CRYPTO volume attached as sd2
+# cd /dev && sh MAKEDEV sd2
+[ *** make sure the line below has the correct disc number! ***]
+# dd if=/dev/zero of=/dev/rsd2c bs=1m count=1
+
+The dd command over-writes the first 1Mb of the softraid device so as to remove any junk or other code that might confuse the installer. This is not essential but recommended in the FAQ. The /dev/rsd2c is the raw device number for the sd2 block device. Raw access only needed by commands such as dd.
+
+Exit from the shell and resume the installation
+
+# exit
+[ ... usual installation steps ... ]
+Available disks are: sd0 sd1 sd2.
+Which disk is the root disk? ('?' for details) [sd0] sd2
+[ ... locate the sets on the USB stick at sd1 and complete installation ...]
+
+Finally, reboot the laptop and remove the USB stick used for installation. On rebooting you should be asked for the passphrase that you set with the bioctl command. The encrypted softraid disk will then be renumbered as sd1. As I selected the [A]uto partition setup, the installer created the usual set of partitions within the sd1 softraid disk.
+
+foo$ df -h
+Filesystem     Size    Used   Avail Capacity  Mounted on
+/dev/sd1a      986M   76.2M    860M     8%    /
+/dev/sd1k      295G   70.4M    280G     0%    /home
+/dev/sd1d      3.9G   12.0K    3.7G     0%    /tmp
+/dev/sd1f      5.8G    723M    4.8G    13%    /usr
+/dev/sd1g      986M    241M    696M    26%    /usr/X11R6
+/dev/sd1h     19.4G    1.8G   16.6G    10%    /usr/local
+/dev/sd1j      5.8G    2.0K    5.5G     0%    /usr/obj
+/dev/sd1i      1.9G    2.0K    1.8G     0%    /usr/src
+/dev/sd1e      9.7G   49.9M    9.1G     1%    /var
+
+The /dev/sd1b partition is swap, and /dev/sd1c is a special partition name that points to the whole disk. Neither of these are listed.
+Keith Burnett
+Last modified: Mon Apr 25 10:38:32 BST 2022
