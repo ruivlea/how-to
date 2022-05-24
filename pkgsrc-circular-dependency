@@ -1,0 +1,3 @@
+https://mail-index.netbsd.org/tech-pkg/2019/10/10/msg022060.html
+
+./bootstrap --prefer-pkgsrc yes --cwrappers no 
